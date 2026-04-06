@@ -10,19 +10,38 @@ st.set_page_config(page_title="Mutual Fund Elite Tool", layout="wide")
 st.title("📊 Mutual Fund Analytics & Portfolio Optimization Tool")
 
 # -----------------------------
-# FALLBACK (SAFE FUNDS)
+# FALLBACK DATA WITH CATEGORY
 # -----------------------------
 fallback_data = [
-    {"schemeName": "Axis Bluechip Fund", "schemeCode": "120503"},
-    {"schemeName": "HDFC Top 100 Fund", "schemeCode": "118989"},
-    {"schemeName": "ICICI Prudential Bluechip Fund", "schemeCode": "119551"},
-    {"schemeName": "SBI Bluechip Fund", "schemeCode": "118834"},
-    {"schemeName": "Kotak Bluechip Fund", "schemeCode": "120828"},
-    {"schemeName": "Parag Parikh Flexi Cap Fund", "schemeCode": "122639"},
-    {"schemeName": "Axis Flexi Cap Fund", "schemeCode": "120716"},
-    {"schemeName": "HDFC Flexi Cap Fund", "schemeCode": "118550"},
-    {"schemeName": "SBI Small Cap Fund", "schemeCode": "125354"},
-    {"schemeName": "UTI Nifty Index Fund", "schemeCode": "120716"},
+    {"schemeName": "Axis Bluechip Fund", "schemeCode": "120503", "category": "Large Cap"},
+    {"schemeName": "HDFC Top 100 Fund", "schemeCode": "118989", "category": "Large Cap"},
+    {"schemeName": "ICICI Prudential Bluechip Fund", "schemeCode": "119551", "category": "Large Cap"},
+    {"schemeName": "SBI Bluechip Fund", "schemeCode": "118834", "category": "Large Cap"},
+    {"schemeName": "Kotak Bluechip Fund", "schemeCode": "120828", "category": "Large Cap"},
+
+    {"schemeName": "Parag Parikh Flexi Cap Fund", "schemeCode": "122639", "category": "Flexi Cap"},
+    {"schemeName": "Axis Flexi Cap Fund", "schemeCode": "120716", "category": "Flexi Cap"},
+    {"schemeName": "HDFC Flexi Cap Fund", "schemeCode": "118550", "category": "Flexi Cap"},
+    {"schemeName": "ICICI Prudential Flexi Cap Fund", "schemeCode": "119551", "category": "Flexi Cap"},
+    {"schemeName": "Kotak Flexi Cap Fund", "schemeCode": "120828", "category": "Flexi Cap"},
+
+    {"schemeName": "SBI Small Cap Fund", "schemeCode": "125354", "category": "Small Cap"},
+    {"schemeName": "Nippon India Small Cap Fund", "schemeCode": "125354", "category": "Small Cap"},
+    {"schemeName": "Axis Small Cap Fund", "schemeCode": "125497", "category": "Small Cap"},
+    {"schemeName": "HDFC Small Cap Fund", "schemeCode": "118550", "category": "Small Cap"},
+    {"schemeName": "Kotak Small Cap Fund", "schemeCode": "122639", "category": "Small Cap"},
+
+    {"schemeName": "UTI Nifty Index Fund", "schemeCode": "120716", "category": "Index"},
+    {"schemeName": "Nippon India Large Cap Fund", "schemeCode": "118551", "category": "Large Cap"},
+    {"schemeName": "Mirae Asset Large Cap Fund", "schemeCode": "118989", "category": "Large Cap"},
+    {"schemeName": "Franklin India Bluechip Fund", "schemeCode": "118834", "category": "Large Cap"},
+    {"schemeName": "Aditya Birla Frontline Equity Fund", "schemeCode": "119064", "category": "Large Cap"},
+
+    {"schemeName": "ICICI Prudential Balanced Advantage Fund", "schemeCode": "120586", "category": "Hybrid"},
+    {"schemeName": "HDFC Balanced Advantage Fund", "schemeCode": "119064", "category": "Hybrid"},
+    {"schemeName": "SBI Equity Hybrid Fund", "schemeCode": "118834", "category": "Hybrid"},
+    {"schemeName": "Kotak Equity Hybrid Fund", "schemeCode": "120828", "category": "Hybrid"},
+    {"schemeName": "Aditya Birla Hybrid Equity Fund", "schemeCode": "119551", "category": "Hybrid"},
 ]
 
 # -----------------------------
@@ -33,7 +52,8 @@ def get_fund_list():
     try:
         res = requests.get("https://api.mfapi.in/mf", timeout=10)
         if res.status_code == 200:
-            return pd.DataFrame(res.json()).head(100)
+            df = pd.DataFrame(res.json()).head(150)
+            return df
     except:
         pass
     return pd.DataFrame(fallback_data)
@@ -41,18 +61,39 @@ def get_fund_list():
 fund_df = get_fund_list()
 
 # -----------------------------
+# SIDEBAR FILTERS
+# -----------------------------
+st.sidebar.header("🔍 Filter Options")
+
+category = st.sidebar.selectbox(
+    "Category",
+    ["All", "Large Cap", "Flexi Cap", "Small Cap", "Hybrid", "Index"]
+)
+
+search = st.sidebar.text_input("Search Fund")
+
+filtered_df = fund_df.copy()
+
+if category != "All" and 'category' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['category'] == category]
+
+if search:
+    filtered_df = filtered_df[
+        filtered_df['schemeName'].str.contains(search, case=False, na=False)
+    ]
+
+# -----------------------------
 # INPUTS
 # -----------------------------
-col1, col2 = st.columns(2)
+selected_funds = st.multiselect(
+    "Select Mutual Funds",
+    filtered_df['schemeName']
+)
 
-with col1:
-    selected_funds = st.multiselect("🔍 Select Funds", fund_df['schemeName'])
-
-with col2:
-    timeframe = st.selectbox(
-        "📅 Timeframe",
-        ["3 Months", "1 Year", "2 Years", "3 Years", "5 Years"]
-    )
+timeframe = st.selectbox(
+    "Timeframe",
+    ["3 Months", "1 Year", "2 Years", "3 Years", "5 Years"]
+)
 
 results = []
 
@@ -124,21 +165,24 @@ for fund in selected_funds:
         continue
 
 # -----------------------------
-# DISPLAY RESULTS
+# DISPLAY
 # -----------------------------
 if results:
 
     df_res = pd.DataFrame(results)
 
-    # CLEAN DATA
     df_res = df_res.replace([np.inf, -np.inf], np.nan).dropna()
 
     if df_res.empty:
-        st.warning("No valid data available")
+        st.warning("No valid data")
         st.stop()
 
+    # SORT
+    sort_by = st.selectbox("Sort By", ["Sharpe", "Return", "Risk"])
+    df_res = df_res.sort_values(by=sort_by, ascending=False)
+
     # KPI
-    best = df_res.loc[df_res['Sharpe'].idxmax()]
+    best = df_res.iloc[0]
 
     c1, c2, c3 = st.columns(3)
     c1.metric("🏆 Best Fund", best['Fund'])
@@ -146,14 +190,14 @@ if results:
     c3.metric("⚖️ Sharpe", f"{best['Sharpe']:.2f}")
 
     # TABLE
-    st.subheader("📊 Fund Comparison")
+    st.subheader("📊 Comparison")
     st.dataframe(df_res.style.format({
         "Return": "{:.2%}",
         "Risk": "{:.2%}",
         "Sharpe": "{:.2f}"
     }))
 
-    # SAFE SCATTER (NO SIZE PARAM)
+    # SCATTER
     st.subheader("📈 Risk vs Return")
 
     fig = px.scatter(
@@ -165,15 +209,13 @@ if results:
     )
 
     fig.update_traces(textposition='top center')
-
     st.plotly_chart(fig, use_container_width=True)
 
     # PORTFOLIO
     st.subheader("💼 Portfolio Allocation")
 
     sharpe_vals = df_res['Sharpe'].clip(lower=0)
-
-    weights = sharpe_vals / sharpe_vals.sum() if sharpe_vals.sum() != 0 else [1/len(sharpe_vals)]*len(sharpe_vals)
+    weights = sharpe_vals / sharpe_vals.sum()
 
     df_res['Weight'] = weights
 
@@ -181,4 +223,4 @@ if results:
     st.plotly_chart(fig2, use_container_width=True)
 
 else:
-    st.info("Select funds to begin analysis")
+    st.info("Select funds to analyze")
