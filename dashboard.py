@@ -7,28 +7,10 @@ from datetime import timedelta
 
 st.set_page_config(page_title="Mutual Fund Elite Tool", layout="wide")
 
-# -----------------------------
-# CUSTOM STYLING
-# -----------------------------
-st.markdown("""
-<style>
-.big-title {
-    font-size: 32px;
-    font-weight: bold;
-}
-.metric-card {
-    background-color: #111;
-    padding: 15px;
-    border-radius: 10px;
-    text-align: center;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="big-title">📊 Mutual Fund Analytics Dashboard</div>', unsafe_allow_html=True)
+st.title("📊 Mutual Fund Analytics & Portfolio Optimization Tool")
 
 # -----------------------------
-# FALLBACK FUNDS
+# FALLBACK (25 FUNDS)
 # -----------------------------
 fallback_data = [
     {"schemeName": "Axis Bluechip Fund", "schemeCode": "120503"},
@@ -41,16 +23,35 @@ fallback_data = [
     {"schemeName": "HDFC Flexi Cap Fund", "schemeCode": "118550"},
     {"schemeName": "Kotak Flexi Cap Fund", "schemeCode": "118834"},
     {"schemeName": "ICICI Prudential Flexi Cap Fund", "schemeCode": "119551"},
+    {"schemeName": "SBI Small Cap Fund", "schemeCode": "125354"},
+    {"schemeName": "Nippon India Small Cap Fund", "schemeCode": "118989"},
+    {"schemeName": "Axis Small Cap Fund", "schemeCode": "125497"},
+    {"schemeName": "Kotak Small Cap Fund", "schemeCode": "122639"},
+    {"schemeName": "HDFC Small Cap Fund", "schemeCode": "118550"},
+    {"schemeName": "ICICI Prudential Balanced Advantage Fund", "schemeCode": "120586"},
+    {"schemeName": "HDFC Balanced Advantage Fund", "schemeCode": "119064"},
+    {"schemeName": "SBI Equity Hybrid Fund", "schemeCode": "118834"},
+    {"schemeName": "Kotak Equity Hybrid Fund", "schemeCode": "120828"},
+    {"schemeName": "Aditya Birla Hybrid Equity Fund", "schemeCode": "119551"},
+    {"schemeName": "UTI Nifty Index Fund", "schemeCode": "120716"},
+    {"schemeName": "Nippon India Large Cap Fund", "schemeCode": "118551"},
+    {"schemeName": "Mirae Asset Large Cap Fund", "schemeCode": "118989"},
+    {"schemeName": "Franklin India Bluechip Fund", "schemeCode": "118834"},
+    {"schemeName": "Aditya Birla Frontline Equity Fund", "schemeCode": "119064"},
 ]
 
+# -----------------------------
+# FETCH FUND LIST (SAFE)
+# -----------------------------
 @st.cache_data
 def get_fund_list():
     try:
-        res = requests.get("https://api.mfapi.in/mf", timeout=10)
-        df = pd.DataFrame(res.json())
-        return df.head(150)
+        res = requests.get("https://api.mfapi.in/mf", timeout=15)
+        if res.status_code == 200:
+            return pd.DataFrame(res.json()).head(150)
     except:
-        return pd.DataFrame(fallback_data)
+        pass
+    return pd.DataFrame(fallback_data)
 
 fund_df = get_fund_list()
 
@@ -60,29 +61,44 @@ fund_df = get_fund_list()
 col1, col2 = st.columns(2)
 
 with col1:
-    selected_funds = st.multiselect("Select Funds", fund_df['schemeName'])
+    selected_funds = st.multiselect("🔍 Select Mutual Funds", fund_df['schemeName'])
 
 with col2:
-    timeframe = st.selectbox("Timeframe", ["3 Months", "1 Year", "3 Years", "5 Years"])
+    timeframe = st.selectbox(
+        "📅 Select Timeframe",
+        ["3 Months", "1 Year", "2 Years", "3 Years", "5 Years"]
+    )
 
 results = []
 
 # -----------------------------
-# PROCESS DATA
+# PROCESS FUNDS
 # -----------------------------
 for fund in selected_funds:
 
-    code = fund_df[fund_df['schemeName'] == fund]['schemeCode'].values[0]
-    url = f"https://api.mfapi.in/mf/{code}"
-
     try:
-        data = requests.get(url, timeout=10).json()
+        code = fund_df[fund_df['schemeName'] == fund]['schemeCode'].values[0]
+        url = f"https://api.mfapi.in/mf/{code}"
+
+        res = requests.get(url, timeout=10)
+
+        if res.status_code != 200:
+            continue
+
+        data = res.json()
+
+        if 'data' not in data or len(data['data']) == 0:
+            continue
+
         df = pd.DataFrame(data['data'])
 
         df['nav'] = pd.to_numeric(df['nav'], errors='coerce')
-        df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+        df['date'] = pd.to_datetime(df['date'], dayfirst=True, errors='coerce')
 
         df = df.dropna().sort_values("date")
+
+        if df.empty:
+            continue
 
         today = df['date'].max()
 
@@ -90,6 +106,8 @@ for fund in selected_funds:
             cutoff = today - timedelta(days=90)
         elif timeframe == "1 Year":
             cutoff = today - timedelta(days=365)
+        elif timeframe == "2 Years":
+            cutoff = today - timedelta(days=730)
         elif timeframe == "3 Years":
             cutoff = today - timedelta(days=1095)
         else:
@@ -97,11 +115,21 @@ for fund in selected_funds:
 
         df = df[df['date'] >= cutoff]
 
+        if df.empty:
+            continue
+
         df['returns'] = df['nav'].pct_change()
 
         avg_return = df['returns'].mean() * 252
         risk = df['returns'].std() * np.sqrt(252)
-        sharpe = (avg_return - 0.06) / risk if risk != 0 else 0
+
+        if risk == 0 or np.isnan(risk):
+            continue
+
+        sharpe = (avg_return - 0.06) / risk
+
+        if np.isnan(avg_return) or np.isnan(sharpe):
+            continue
 
         results.append({
             "Fund": fund,
@@ -120,24 +148,30 @@ if results:
 
     df_res = pd.DataFrame(results)
 
-    # KPI CARDS
+    # CLEAN DATA
+    df_res = df_res.replace([np.inf, -np.inf], np.nan).dropna()
+
+    if df_res.empty:
+        st.warning("No valid data available")
+        st.stop()
+
+    # KPI
     best = df_res.loc[df_res['Sharpe'].idxmax()]
 
     c1, c2, c3 = st.columns(3)
-
     c1.metric("🏆 Best Fund", best['Fund'])
     c2.metric("📈 Return", f"{best['Return']:.2%}")
     c3.metric("⚖️ Sharpe", f"{best['Sharpe']:.2f}")
 
     # TABLE
-    st.subheader("📊 Comparison Table")
+    st.subheader("📊 Fund Comparison")
     st.dataframe(df_res.style.format({
         "Return": "{:.2%}",
         "Risk": "{:.2%}",
         "Sharpe": "{:.2f}"
     }))
 
-    # PLOTLY CHART
+    # SCATTER
     st.subheader("📈 Risk vs Return")
 
     fig = px.scatter(
@@ -148,11 +182,12 @@ if results:
         size="Sharpe",
         hover_name="Fund"
     )
+    fig.update_traces(textposition='top center')
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # BAR CHART
-    st.subheader("📊 Portfolio Allocation")
+    # PORTFOLIO
+    st.subheader("💼 Portfolio Allocation")
 
     sharpe_vals = df_res['Sharpe'].clip(lower=0)
 
