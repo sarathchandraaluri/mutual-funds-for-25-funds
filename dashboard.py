@@ -10,7 +10,7 @@ st.set_page_config(page_title="Mutual Fund Elite Tool", layout="wide")
 st.title("📊 Mutual Fund Analytics & Portfolio Optimization Tool")
 
 # -----------------------------
-# FALLBACK (25 FUNDS)
+# FALLBACK (SAFE FUNDS)
 # -----------------------------
 fallback_data = [
     {"schemeName": "Axis Bluechip Fund", "schemeCode": "120503"},
@@ -21,34 +21,19 @@ fallback_data = [
     {"schemeName": "Parag Parikh Flexi Cap Fund", "schemeCode": "122639"},
     {"schemeName": "Axis Flexi Cap Fund", "schemeCode": "120716"},
     {"schemeName": "HDFC Flexi Cap Fund", "schemeCode": "118550"},
-    {"schemeName": "Kotak Flexi Cap Fund", "schemeCode": "118834"},
-    {"schemeName": "ICICI Prudential Flexi Cap Fund", "schemeCode": "119551"},
     {"schemeName": "SBI Small Cap Fund", "schemeCode": "125354"},
-    {"schemeName": "Nippon India Small Cap Fund", "schemeCode": "118989"},
-    {"schemeName": "Axis Small Cap Fund", "schemeCode": "125497"},
-    {"schemeName": "Kotak Small Cap Fund", "schemeCode": "122639"},
-    {"schemeName": "HDFC Small Cap Fund", "schemeCode": "118550"},
-    {"schemeName": "ICICI Prudential Balanced Advantage Fund", "schemeCode": "120586"},
-    {"schemeName": "HDFC Balanced Advantage Fund", "schemeCode": "119064"},
-    {"schemeName": "SBI Equity Hybrid Fund", "schemeCode": "118834"},
-    {"schemeName": "Kotak Equity Hybrid Fund", "schemeCode": "120828"},
-    {"schemeName": "Aditya Birla Hybrid Equity Fund", "schemeCode": "119551"},
     {"schemeName": "UTI Nifty Index Fund", "schemeCode": "120716"},
-    {"schemeName": "Nippon India Large Cap Fund", "schemeCode": "118551"},
-    {"schemeName": "Mirae Asset Large Cap Fund", "schemeCode": "118989"},
-    {"schemeName": "Franklin India Bluechip Fund", "schemeCode": "118834"},
-    {"schemeName": "Aditya Birla Frontline Equity Fund", "schemeCode": "119064"},
 ]
 
 # -----------------------------
-# FETCH FUND LIST (SAFE)
+# FETCH FUND LIST
 # -----------------------------
 @st.cache_data
 def get_fund_list():
     try:
-        res = requests.get("https://api.mfapi.in/mf", timeout=15)
+        res = requests.get("https://api.mfapi.in/mf", timeout=10)
         if res.status_code == 200:
-            return pd.DataFrame(res.json()).head(150)
+            return pd.DataFrame(res.json()).head(100)
     except:
         pass
     return pd.DataFrame(fallback_data)
@@ -61,33 +46,30 @@ fund_df = get_fund_list()
 col1, col2 = st.columns(2)
 
 with col1:
-    selected_funds = st.multiselect("🔍 Select Mutual Funds", fund_df['schemeName'])
+    selected_funds = st.multiselect("🔍 Select Funds", fund_df['schemeName'])
 
 with col2:
     timeframe = st.selectbox(
-        "📅 Select Timeframe",
+        "📅 Timeframe",
         ["3 Months", "1 Year", "2 Years", "3 Years", "5 Years"]
     )
 
 results = []
 
 # -----------------------------
-# PROCESS FUNDS
+# PROCESS DATA
 # -----------------------------
 for fund in selected_funds:
-
     try:
         code = fund_df[fund_df['schemeName'] == fund]['schemeCode'].values[0]
         url = f"https://api.mfapi.in/mf/{code}"
 
         res = requests.get(url, timeout=10)
-
         if res.status_code != 200:
             continue
 
         data = res.json()
-
-        if 'data' not in data or len(data['data']) == 0:
+        if 'data' not in data:
             continue
 
         df = pd.DataFrame(data['data'])
@@ -142,7 +124,7 @@ for fund in selected_funds:
         continue
 
 # -----------------------------
-# DISPLAY
+# DISPLAY RESULTS
 # -----------------------------
 if results:
 
@@ -171,7 +153,7 @@ if results:
         "Sharpe": "{:.2f}"
     }))
 
-    # SCATTER
+    # SAFE SCATTER (NO SIZE PARAM)
     st.subheader("📈 Risk vs Return")
 
     fig = px.scatter(
@@ -179,9 +161,9 @@ if results:
         x="Risk",
         y="Return",
         text="Fund",
-        size="Sharpe",
         hover_name="Fund"
     )
+
     fig.update_traces(textposition='top center')
 
     st.plotly_chart(fig, use_container_width=True)
