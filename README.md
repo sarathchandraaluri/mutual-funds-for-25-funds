@@ -74,7 +74,7 @@ The system performs the following steps:
 
 ## 🌐 Data Source
 
-- Mutual Fund API: https://api.mfapi.in/
+- Mutual Fund API: https://mfapi.in/
 
 ---
 
