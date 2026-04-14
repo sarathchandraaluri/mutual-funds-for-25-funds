@@ -50,7 +50,7 @@ fallback_data = [
 @st.cache_data
 def get_fund_list():
     try:
-        res = requests.get("https://api.mfapi.in/mf", timeout=10)
+        res = requests.get("https://mfapi.in/mf", timeout=10)
         if res.status_code == 200:
             df = pd.DataFrame(res.json()).head(150)
             return df
